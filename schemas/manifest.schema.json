@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Exam Agent Run Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "question_id",
+    "project_root",
+    "stage",
+    "base_commit",
+    "artifact_hashes",
+    "reviews",
+    "approvals",
+    "repair_rounds",
+    "active"
+  ],
+  "properties": {
+    "question_id": { "type": "string", "minLength": 1 },
+    "project_root": { "type": "string", "minLength": 1 },
+    "stage": {
+      "enum": [
+        "INIT",
+        "DESIGN_DRAFT",
+        "DESIGN_PASSED",
+        "INPUT_DRAFT",
+        "INPUT_REVIEW",
+        "INPUT_FROZEN",
+        "OUTPUT_DRAFT",
+        "OUTPUT_REVIEW",
+        "OUTPUT_PASSED",
+        "HUMAN_REVIEW",
+        "RELEASED",
+        "CHANGES_REQUIRED",
+        "BLOCKED",
+        "INPUT_INVALIDATED",
+        "CONFLICT",
+        "HUMAN_DECISION_REQUIRED"
+      ]
+    },
+    "base_commit": { "type": "string", "minLength": 1 },
+    "artifact_hashes": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "reviews": { "type": "object" },
+    "approvals": { "type": "object" },
+    "repair_rounds": { "type": "integer", "minimum": 0 },
+    "active": { "type": "boolean" }
+  }
+}

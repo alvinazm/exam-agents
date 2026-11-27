@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Exam Agent Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "task_id",
+    "status",
+    "checked_items",
+    "findings",
+    "commands_run",
+    "artifacts_written",
+    "output_hashes"
+  ],
+  "properties": {
+    "task_id": { "type": "string", "minLength": 1 },
+    "status": {
+      "enum": ["passed", "changes_required", "blocked"]
+    },
+    "checked_items": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "findings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/finding" }
+    },
+    "commands_run": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "artifacts_written": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "output_hashes": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    }
+  },
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "severity",
+        "classification",
+        "file",
+        "field",
+        "evidence",
+        "required_action"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "severity": { "enum": ["high", "medium", "low"] },
+        "classification": {
+          "enum": [
+            "material_defect",
+            "specification_gap",
+            "intentional_anomaly",
+            "model_error"
+          ]
+        },
+        "file": { "type": "string", "minLength": 1 },
+        "field": { "type": "string", "minLength": 1 },
+        "evidence": { "type": "string", "minLength": 1 },
+        "required_action": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}
