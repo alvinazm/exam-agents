@@ -10,6 +10,7 @@
 - 输入冻结与失效
 - DeepSeek Harness SDK adapter
 - 真实四 Agent runner 装配与技能目录注入
+- Agent 完整 Result Schema 注入与单次修复重试
 - CLI 与 Mock 端到端流程
 
 ## 离线验证
@@ -43,7 +44,7 @@ git diff --check
 验证结果：
 
 - `uv sync --extra dev`：成功
-- `uv run pytest -q`：45 passed
+- `uv run pytest -q`：47 passed
 - `uv run exam-agents --help`：成功显示八个命令
 - `python3 -m compileall -q src scripts`：通过
 - JSON 配置和 Schema 解析：通过

@@ -162,6 +162,8 @@ INIT
 }
 ```
 
+每次任务消息必须携带完整 `result.schema.json`。Agent 输出若不是 JSON object 或不符合 Schema，控制层在同一 session 中重试一次；第二次失败必须停止并进入 `BLOCKED`。
+
 `findings` 必须包含：
 
 - `id`

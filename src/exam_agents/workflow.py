@@ -4,6 +4,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from .dispatch import dispatch_stage
+from .deepseek_runner import InvalidAgentOutputError
 from .freeze import freeze_inputs, verify_hashes
 from .gitops import GitRepo
 from .run_store import RunStore
@@ -171,7 +172,7 @@ def _commit_author_draft(
     return commit
 
 
-def _run_workflow(
+def _run_workflow_impl(
     project_root: Path,
     runs_root: Path,
     question_id: str,
@@ -286,6 +287,33 @@ def _run_workflow(
         return changed
     _advance(store, manifest, "output_passed")
     return _advance(store, manifest, "human_review_started")
+
+
+def _run_workflow(
+    project_root: Path,
+    runs_root: Path,
+    question_id: str,
+    runner,
+    approve_input: bool,
+    coordinator_check: bool,
+) -> dict:
+    try:
+        return _run_workflow_impl(
+            project_root,
+            runs_root,
+            question_id,
+            runner,
+            approve_input,
+            coordinator_check,
+        )
+    except InvalidAgentOutputError as exc:
+        store = RunStore(runs_root)
+        manifest = store.load(question_id)
+        manifest["stage"] = Stage.BLOCKED.value
+        manifest["active"] = False
+        manifest["reviews"]["agent-output-error"] = str(exc)
+        store.save(manifest)
+        return manifest
 
 
 def run_mock_workflow(

@@ -651,3 +651,50 @@ git add src tests docs
 git commit -m "feat: add real DeepSeek workflow entrypoint"
 ```
 
+---
+
+### Task 13: Agent 输出契约注入
+
+**Files:**
+- Modify: `src/exam_agents/deepseek_runner.py`
+- Modify: `tests/test_deepseek_runner.py`
+- Modify: `docs/运行说明.md`
+- Modify: `docs/reviews/2026-11-27-implementation-verification.md`
+
+**Interfaces:**
+- `DeepSeekRunner._prompt(task)` includes full `schemas/result.schema.json`
+- `DeepSeekRunner.run()` retries invalid result JSON once in the same session
+
+- [x] **Step 1: 写完整 Schema 注入失败测试**
+
+断言 Agent prompt 包含 `Exam Agent Result`、`findings` 和 `required`。
+
+- [x] **Step 2: 实现 Schema 注入**
+
+首次任务消息明确禁止 Markdown 代码块和额外解释，并附完整 JSON Schema。
+
+- [x] **Step 3: 写第一次非法、第二次合法的重试测试**
+
+验证同一 Harness session 调用两次，第二次 prompt 包含“上一次输出”。
+
+- [x] **Step 4: 实现单次修复重试**
+
+第二次仍失败时抛出 `InvalidAgentOutputError`。
+
+- [x] **Step 5: 运行全量测试**
+
+Run: `uv run pytest -q`
+
+Expected: 47 passed。
+
+- [x] **Step 6: 第二次非法输出进入 BLOCKED**
+
+真实流程捕获两次失败后的 `InvalidAgentOutputError`，将 manifest 标记为 `BLOCKED` 并关闭 active 状态。
+
+- [x] **Step 7: 提交**
+
+```bash
+git add src tests docs
+git commit -m "feat: inject result schema into agent prompts"
+```
+

@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from exam_agents.mock_harness import MockHarnessRunner
+from exam_agents.deepseek_runner import InvalidAgentOutputError
 from exam_agents.workflow import (
     WorkflowError,
     release_run,
@@ -217,3 +218,29 @@ def test_real_workflow_uses_agent_specific_runners(tmp_path):
     assert ("author", "design", "author") in used
     assert ("material-reviewer", "material_review", "material-review") in used
     assert ("quality-reviewer", "quality_review", "quality-review") in used
+
+
+def test_real_workflow_marks_blocked_after_invalid_agent_output(tmp_path):
+    project = make_project(tmp_path / "project")
+    runs = tmp_path / "runs"
+
+    class FailingRunner(MockHarnessRunner):
+        def run(self, task, workspace, home, timeout_seconds):
+            raise InvalidAgentOutputError("invalid twice")
+
+    runners = {name: FailingRunner({}) for name in (
+        "coordinator",
+        "author",
+        "material-reviewer",
+        "quality-reviewer",
+    )}
+    manifest = run_real_workflow(
+        project,
+        runs,
+        "q1",
+        runners,
+        approve_input=True,
+    )
+
+    assert manifest["stage"] == "BLOCKED"
+    assert manifest["active"] is False

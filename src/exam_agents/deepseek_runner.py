@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from .schema import SchemaValidationError, validate_result
+from .schema import SCHEMA_DIR, SchemaValidationError, validate_result
 
 
 class HarnessConfigurationError(RuntimeError):
@@ -69,6 +69,29 @@ class DeepSeekRunner:
         self.environ = environ if environ is not None else os.environ
         self.agent_prompt = agent_prompt
 
+    def _schema_text(self) -> str:
+        return (
+            SCHEMA_DIR / "result.schema.json"
+        ).read_text(encoding="utf-8").strip()
+
+    def _prompt(self, task: dict) -> str:
+        return (
+            f"{self.agent_prompt}\n\n"
+            "只返回一个 JSON object，不要使用 Markdown 代码块，不要添加解释。\n"
+            "必须满足以下 JSON Schema 的全部 required 字段、枚举和 "
+            "additionalProperties 限制：\n"
+            f"{self._schema_text()}\n\n"
+            "任务包如下：\n"
+            f"{json.dumps(task, ensure_ascii=False)}"
+        ).strip()
+
+    def _repair_prompt(self, task: dict, error: str) -> str:
+        return (
+            f"{self._prompt(task)}\n\n"
+            f"上一次输出不是合法 result-v1：{error}。\n"
+            "现在只返回修正后的 JSON object，不要包含任何其他文字。"
+        ).strip()
+
     def run(
         self,
         task: dict,
@@ -100,20 +123,27 @@ class DeepSeekRunner:
                 ),
             },
         )
+        prompt = self._prompt(task)
         with sdk as harness:
-            result = harness.run(
-                (
-                    f"{self.agent_prompt}\n\n"
-                    "任务包如下，只返回符合 result-v1 的 JSON：\n"
-                    f"{json.dumps(task, ensure_ascii=False)}"
-                ).strip(),
-                session_id=task["task_id"],
-            )
-        try:
-            payload = json.loads(result.final_response)
-            if not isinstance(payload, dict):
-                raise InvalidAgentOutputError("agent response must be an object")
-            validate_result(payload)
-        except (json.JSONDecodeError, SchemaValidationError) as exc:
-            raise InvalidAgentOutputError(str(exc)) from exc
-        return payload
+            for attempt in range(2):
+                result = harness.run(
+                    prompt,
+                    session_id=task["task_id"],
+                )
+                try:
+                    payload = json.loads(result.final_response)
+                    if not isinstance(payload, dict):
+                        raise InvalidAgentOutputError(
+                            "agent response must be an object"
+                        )
+                    validate_result(payload)
+                    return payload
+                except (
+                    json.JSONDecodeError,
+                    InvalidAgentOutputError,
+                    SchemaValidationError,
+                ) as exc:
+                    if attempt == 1:
+                        raise InvalidAgentOutputError(str(exc)) from exc
+                    prompt = self._repair_prompt(task, str(exc))
+        raise InvalidAgentOutputError("agent did not return a valid result")
