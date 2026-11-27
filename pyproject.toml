@@ -12,6 +12,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+deepseek = [
+  "deepseek-harness-sdk>=0.2.2rc2",
+]
 dev = [
   "pytest>=8.3,<10",
 ]
