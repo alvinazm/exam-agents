@@ -33,7 +33,7 @@ git diff --check
 验证结果：
 
 - `uv sync --extra dev`：成功
-- `uv run pytest -q`：37 passed
+- `uv run pytest -q`：38 passed
 - `uv run exam-agents --help`：成功显示六个命令
 - `python3 -m compileall -q src scripts`：通过
 - JSON 配置和 Schema 解析：通过

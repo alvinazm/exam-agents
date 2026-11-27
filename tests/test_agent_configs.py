@@ -31,3 +31,14 @@ def test_control_scripts_exist():
         "submit_result.py",
     ):
         assert (ROOT / "scripts" / name).is_file()
+
+
+def test_quality_reviewer_owns_difficulty_and_ai_style_checks():
+    prompt = (
+        ROOT / "agents" / "quality-reviewer" / "AGENT.md"
+    ).read_text(encoding="utf-8")
+
+    assert "难度设计检查.md" in prompt
+    assert "三模型" in prompt
+    assert "audit_package_style.py" in prompt
+    assert "AI 文风" in prompt
