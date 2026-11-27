@@ -39,6 +39,12 @@ git diff --check
 
 普通自动测试仍不调用真实 API，避免每次测试消耗配额。session 日志保存在被 Git 忽略的 `runs/` 中，不提交凭据或会话内容。
 
+## 真实多 Agent 试跑
+
+2026-11-27 使用 `rubrics-test3` 的一次性副本完成一次真实四 Agent 试跑。coordinator、author 和两个并行 reviewer 均实际调用成功；由于两名 reviewer 返回共 12 条材料或规格问题，流程正确停在 `CHANGES_REQUIRED`，没有冻结输入或继续生成 output。
+
+详细记录见 `docs/reviews/2026-11-27-real-workflow-smoke.md`。
+
 ## 结果
 
 验证结果：
@@ -50,4 +56,4 @@ git diff --check
 - JSON 配置和 Schema 解析：通过
 - `git diff --check`：通过
 
-真实 API 已完成最小连通性和结构化返回验证。当前结果证明控制层、权限配置、Mock 编排、Git 隔离、SDK 基础调用和真实四 Agent 装配可用，但尚未用完整题目运行四个真实 Agent，因此不证明真实协作产出质量。
+真实 API 和四 Agent 编排已完成一次试跑。当前结果证明控制层、权限配置、Mock 编排、Git 隔离、SDK 调用、skill 加载和问题回退链路可用；试跑使用的是已有题目的副本，因此不证明从零生产新题的协作质量。
