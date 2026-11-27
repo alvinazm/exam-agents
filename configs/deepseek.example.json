@@ -1,0 +1,8 @@
+{
+  "provider": "deepseek-official",
+  "model": "deepseek-v4-flash",
+  "max_tokens": 49152,
+  "profile": "sdk",
+  "patches": [],
+  "timeout_seconds": 1800
+}
