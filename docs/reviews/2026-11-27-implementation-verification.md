@@ -26,7 +26,16 @@ git diff --check
 
 ## 真实 Harness
 
-真实 Harness 测试未自动执行。运行前必须设置 `DEEPSEEK_API_KEY`，并显式启用真实测试标记。该限制避免普通测试消耗 API 配额，也避免未经确认访问外部服务。
+2026-11-27 已使用独立 Harness home 和最小请求完成真实 API smoke test：
+
+- provider：`deepseek-official`
+- model：`deepseek-v4-flash`
+- profile：`sdk`
+- SDK：`deepseek-harness-sdk 0.2.2rc2`
+- `finish_reason`：`completed`
+- 返回内容：`{"status":"ok","check":"deepseek-api"}`
+
+普通自动测试仍不调用真实 API，避免每次测试消耗配额。session 日志保存在被 Git 忽略的 `runs/` 中，不提交凭据或会话内容。
 
 ## 结果
 
@@ -39,4 +48,4 @@ git diff --check
 - JSON 配置和 Schema 解析：通过
 - `git diff --check`：通过
 
-真实 DeepSeek API 调用未执行，因此当前结果证明控制层、权限配置、Mock 编排和 Git 隔离逻辑可用，不证明外部模型在实际题目上的表现。
+真实 API 已完成最小连通性和结构化返回验证。当前结果证明控制层、权限配置、Mock 编排、Git 隔离和 SDK 基础调用可用，但不证明四个真实 Agent 在完整题目上的协作质量。
