@@ -1,0 +1,255 @@
+import json
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+from .dispatch import dispatch_stage
+from .freeze import freeze_inputs, verify_hashes
+from .gitops import GitRepo
+from .run_store import RunStore
+from .state import Stage, transition
+from .submit import submit_result
+
+
+class WorkflowError(RuntimeError):
+    pass
+
+
+def _has_blocking_findings(result: dict) -> bool:
+    return result["status"] != "passed" or any(
+        finding["severity"] in {"high", "medium"}
+        for finding in result["findings"]
+    )
+
+
+def _execute_task(
+    run_dir: Path,
+    runner,
+    agent: str,
+    stage: str,
+    instructions: str,
+    workspace: Path,
+    required_files: list[str] | None = None,
+) -> dict:
+    task_path = dispatch_stage(
+        run_dir,
+        agent=agent,
+        stage=stage,
+        instructions=instructions,
+        required_files=required_files or [],
+    )
+    task = json.loads(task_path.read_text(encoding="utf-8"))
+    home = run_dir / "homes" / agent
+    home.mkdir(parents=True, exist_ok=True)
+    result = runner.run(task, workspace, home, 1800)
+    result = dict(result)
+    result["task_id"] = task["task_id"]
+    return submit_result(run_dir, task["task_id"], result)
+
+
+def _advance(
+    store: RunStore,
+    manifest: dict,
+    event: str,
+) -> dict:
+    manifest["stage"] = transition(
+        Stage(manifest["stage"]),
+        event,
+    ).value
+    store.save(manifest)
+    return manifest
+
+
+def _record_reviews(
+    manifest: dict,
+    material: dict,
+    quality: dict,
+) -> None:
+    manifest["reviews"]["material-reviewer"] = material
+    manifest["reviews"]["quality-reviewer"] = quality
+
+
+def _run_review_round(
+    run_dir: Path,
+    runner,
+    workspace: Path,
+) -> tuple[dict, dict]:
+    jobs = (
+        ("material-reviewer", "Evaluate materials.", "material_review"),
+        ("quality-reviewer", "Evaluate exam quality.", "quality_review"),
+    )
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = {
+            executor.submit(
+                _execute_task,
+                run_dir,
+                runner,
+                agent,
+                stage,
+                instructions,
+                workspace,
+            ): agent
+            for agent, instructions, stage in jobs
+        }
+        results = {
+            futures[future]: future.result() for future in futures
+        }
+    return results["material-reviewer"], results["quality-reviewer"]
+
+
+def _blocked_or_changed(
+    store: RunStore,
+    manifest: dict,
+    results: tuple[dict, dict],
+) -> dict | None:
+    if any(result["status"] == "blocked" for result in results):
+        return _advance(store, manifest, "blocked")
+    if any(_has_blocking_findings(result) for result in results):
+        manifest["repair_rounds"] += 1
+        manifest["stage"] = transition(
+            Stage(manifest["stage"]),
+            "changes_requested",
+        ).value
+        store.save(manifest)
+        return manifest
+    return None
+
+
+def _create_worktrees(
+    project: Path,
+    run_dir: Path,
+    question_id: str,
+) -> tuple[Path, Path, Path]:
+    repo = GitRepo(project)
+    author = repo.create_worktree(
+        f"exam/{question_id}/author",
+        run_dir / "worktrees" / "author",
+    )
+    material = repo.create_worktree(
+        f"exam/{question_id}/material-review",
+        run_dir / "worktrees" / "material-review",
+    )
+    quality = repo.create_worktree(
+        f"exam/{question_id}/quality-review",
+        run_dir / "worktrees" / "quality-review",
+    )
+    return author, material, quality
+
+
+def run_mock_workflow(
+    project_root: Path,
+    runs_root: Path,
+    question_id: str,
+    runner,
+    approve_input: bool,
+) -> dict:
+    project_root = project_root.resolve()
+    store = RunStore(runs_root)
+    manifest = store.create(
+        question_id,
+        project_root,
+        GitRepo(project_root).head(),
+    )
+    run_dir = runs_root.resolve() / question_id
+    author, _material, _quality = _create_worktrees(
+        project_root,
+        run_dir,
+        question_id,
+    )
+    _advance(store, manifest, "design_started")
+    design = _execute_task(
+        run_dir,
+        runner,
+        "author",
+        "design",
+        "Create the difficulty and realism designs.",
+        author,
+    )
+    if _has_blocking_findings(design):
+        manifest["repair_rounds"] += 1
+        manifest["stage"] = Stage.CHANGES_REQUIRED.value
+        store.save(manifest)
+        return manifest
+    _advance(store, manifest, "design_passed")
+    _advance(store, manifest, "input_started")
+    input_result = _execute_task(
+        run_dir,
+        runner,
+        "author",
+        "input",
+        "Create input, Query, and task brief.",
+        author,
+    )
+    if _has_blocking_findings(input_result):
+        manifest["repair_rounds"] += 1
+        manifest["stage"] = Stage.CHANGES_REQUIRED.value
+        store.save(manifest)
+        return manifest
+    _advance(store, manifest, "input_review_started")
+    reviews = _run_review_round(run_dir, runner, author)
+    _record_reviews(manifest, *reviews)
+    changed = _blocked_or_changed(store, manifest, reviews)
+    if changed:
+        return changed
+    if not approve_input:
+        store.save(manifest)
+        return manifest
+    manifest["approvals"]["input_frozen"] = True
+    manifest = freeze_inputs(run_dir, author, manifest)
+    repo = GitRepo(project_root)
+    repo.tag(f"exam/{question_id}/input-frozen", manifest["base_commit"])
+    _advance(store, manifest, "input_frozen")
+    _advance(store, manifest, "output_started")
+    output = _execute_task(
+        run_dir,
+        runner,
+        "author",
+        "output_build",
+        "Create answer, Rubrics, and output audit.",
+        author,
+    )
+    if _has_blocking_findings(output):
+        manifest["repair_rounds"] += 1
+        manifest["stage"] = Stage.CHANGES_REQUIRED.value
+        store.save(manifest)
+        return manifest
+    _advance(store, manifest, "output_review_started")
+    reviews = _run_review_round(run_dir, runner, author)
+    _record_reviews(manifest, *reviews)
+    changed = _blocked_or_changed(store, manifest, reviews)
+    if changed:
+        return changed
+    _advance(store, manifest, "output_passed")
+    return _advance(store, manifest, "human_review_started")
+
+
+def release_run(
+    project_root: Path,
+    runs_root: Path,
+    question_id: str,
+    approved: bool,
+) -> dict:
+    if not approved:
+        raise WorkflowError("final release requires explicit human approval")
+    store = RunStore(runs_root)
+    manifest = store.load(question_id)
+    run_dir = runs_root.resolve() / question_id
+    author = run_dir / "worktrees" / "author"
+    if not verify_hashes(run_dir, author, manifest):
+        manifest["stage"] = Stage.INPUT_INVALIDATED.value
+        manifest["active"] = False
+        store.save(manifest)
+        raise WorkflowError("frozen inputs changed before release")
+    if Stage(manifest["stage"]) != Stage.HUMAN_REVIEW:
+        raise WorkflowError("run is not ready for release")
+    manifest["approvals"]["final_release"] = True
+    manifest["stage"] = transition(
+        Stage.HUMAN_REVIEW,
+        "released",
+    ).value
+    manifest["active"] = False
+    store.save(manifest)
+    GitRepo(project_root).tag(
+        f"exam/{question_id}/released",
+        manifest["base_commit"],
+    )
+    return manifest
