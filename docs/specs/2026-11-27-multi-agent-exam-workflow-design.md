@@ -290,6 +290,8 @@ INIT
 - `init_run.py`、`dispatch_stage.py`、`freeze_inputs.py`、`verify_hashes.py`、`submit_result.py`。
 - 一个 mock harness 驱动。
 - DeepSeek Harness SDK 适配器。
+- 从四个 Agent 配置构造独立 runner，并注入 `rubrics-growth-exam` 技能目录。
+- `run-real-workflow` 与带人工批准的 `release-run` CLI。
 - 正常流程、输入失效、非法结果和审查冲突测试。
 - 控制层 git commit、tag、merge 和 push 的服务封装。
 

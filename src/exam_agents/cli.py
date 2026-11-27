@@ -6,6 +6,9 @@ from .dispatch import dispatch_stage
 from .freeze import freeze_inputs, verify_hashes
 from .run_store import RunStore
 from .submit import submit_result
+from .agent_runtime import build_deepseek_runners, load_agent_specs
+from .env import load_env_file
+from .workflow import release_run, run_real_workflow
 
 
 def _emit(payload: dict) -> None:
@@ -47,6 +50,20 @@ def _parser() -> argparse.ArgumentParser:
     verify.add_argument("--runs-root", type=Path, required=True)
     verify.add_argument("--question-id", required=True)
     verify.add_argument("--workspace", type=Path, required=True)
+
+    real = sub.add_parser("run-real-workflow")
+    real.add_argument("--project-root", type=Path, required=True)
+    real.add_argument("--runs-root", type=Path, required=True)
+    real.add_argument("--question-id", required=True)
+    real.add_argument("--agents-dir", type=Path, required=True)
+    real.add_argument("--approve-input", action="store_true")
+    real.add_argument("--env-file", type=Path, default=Path(".env"))
+
+    release = sub.add_parser("release-run")
+    release.add_argument("--project-root", type=Path, required=True)
+    release.add_argument("--runs-root", type=Path, required=True)
+    release.add_argument("--question-id", required=True)
+    release.add_argument("--approve", action="store_true")
     return parser
 
 
@@ -90,6 +107,24 @@ def _execute(args: argparse.Namespace) -> dict:
             manifest,
         )
         return {"valid": valid}
+    if args.command == "run-real-workflow":
+        load_env_file(args.env_file)
+        specs = load_agent_specs(args.agents_dir)
+        runners = build_deepseek_runners(specs)
+        return run_real_workflow(
+            args.project_root,
+            args.runs_root,
+            args.question_id,
+            runners,
+            args.approve_input,
+        )
+    if args.command == "release-run":
+        return release_run(
+            args.project_root,
+            args.runs_root,
+            args.question_id,
+            args.approve,
+        )
     raise ValueError(f"unknown command: {args.command}")
 
 

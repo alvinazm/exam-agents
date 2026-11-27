@@ -9,6 +9,7 @@
 - Git worktree 草稿隔离
 - 输入冻结与失效
 - DeepSeek Harness SDK adapter
+- 真实四 Agent runner 装配与技能目录注入
 - CLI 与 Mock 端到端流程
 
 ## 离线验证
@@ -42,10 +43,10 @@ git diff --check
 验证结果：
 
 - `uv sync --extra dev`：成功
-- `uv run pytest -q`：38 passed
-- `uv run exam-agents --help`：成功显示六个命令
+- `uv run pytest -q`：45 passed
+- `uv run exam-agents --help`：成功显示八个命令
 - `python3 -m compileall -q src scripts`：通过
 - JSON 配置和 Schema 解析：通过
 - `git diff --check`：通过
 
-真实 API 已完成最小连通性和结构化返回验证。当前结果证明控制层、权限配置、Mock 编排、Git 隔离和 SDK 基础调用可用，但不证明四个真实 Agent 在完整题目上的协作质量。
+真实 API 已完成最小连通性和结构化返回验证。当前结果证明控制层、权限配置、Mock 编排、Git 隔离、SDK 基础调用和真实四 Agent 装配可用，但尚未用完整题目运行四个真实 Agent，因此不证明真实协作产出质量。

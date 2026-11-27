@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -69,6 +70,9 @@ def test_uses_workspace_home_and_sdk_profile(tmp_path, monkeypatch):
     assert instance.kwargs["profile"] == "sdk"
     assert instance.kwargs["env"]["DSH_PERMISSION_MODE"] == "workspace-write"
     assert instance.kwargs["env"]["PYTHONDONTWRITEBYTECODE"] == "1"
+    assert instance.kwargs["env"]["DSH_AGENTS_HOME"] == str(
+        Path.home() / ".codex"
+    )
 
 
 def test_requires_api_key(tmp_path, monkeypatch):

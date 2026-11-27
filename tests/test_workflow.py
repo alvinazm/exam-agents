@@ -5,7 +5,12 @@ from pathlib import Path
 import pytest
 
 from exam_agents.mock_harness import MockHarnessRunner
-from exam_agents.workflow import WorkflowError, release_run, run_mock_workflow
+from exam_agents.workflow import (
+    WorkflowError,
+    release_run,
+    run_mock_workflow,
+    run_real_workflow,
+)
 
 
 def git(cwd: Path, *args: str) -> str:
@@ -53,6 +58,7 @@ def result(task_id="placeholder", status="passed", findings=None):
 
 def responses(review_status="passed"):
     return {
+        "coordinator_check": result(),
         "design": result(),
         "input": result(),
         "material_review": result(
@@ -173,3 +179,41 @@ def test_reviewers_see_latest_author_draft(tmp_path):
 
     assert (runs / "q1" / "worktrees" / "material-review" / "input" / "new.txt").is_file()
     assert (runs / "q1" / "worktrees" / "quality-review" / "input" / "new.txt").is_file()
+
+
+def test_real_workflow_uses_agent_specific_runners(tmp_path):
+    project = make_project(tmp_path / "project")
+    runs = tmp_path / "runs"
+    used = []
+
+    class NamedRunner(MockHarnessRunner):
+        def __init__(self, name):
+            super().__init__(responses())
+            self.name = name
+
+        def run(self, task, workspace, home, timeout_seconds):
+            used.append((self.name, task["stage"], workspace.name))
+            return super().run(task, workspace, home, timeout_seconds)
+
+    runners = {
+        name: NamedRunner(name)
+        for name in (
+            "coordinator",
+            "author",
+            "material-reviewer",
+            "quality-reviewer",
+        )
+    }
+    manifest = run_real_workflow(
+        project,
+        runs,
+        "q1",
+        runners,
+        approve_input=True,
+    )
+
+    assert manifest["stage"] == "HUMAN_REVIEW"
+    assert ("coordinator", "coordinator_check", "project") in used
+    assert ("author", "design", "author") in used
+    assert ("material-reviewer", "material_review", "material-review") in used
+    assert ("quality-reviewer", "quality_review", "quality-review") in used

@@ -19,6 +19,7 @@
     "question_id": { "type": "string", "minLength": 1 },
     "stage": {
       "enum": [
+        "coordinator_check",
         "design",
         "input",
         "material_review",

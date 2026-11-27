@@ -594,3 +594,60 @@ git add docs
 git commit -m "docs: add workflow operation and verification guide"
 ```
 
+---
+
+### Task 12: 真实 DeepSeek 工作流入口
+
+**Files:**
+- Create: `src/exam_agents/agent_runtime.py`
+- Create: `src/exam_agents/env.py`
+- Modify: `src/exam_agents/deepseek_runner.py`
+- Modify: `src/exam_agents/workflow.py`
+- Modify: `src/exam_agents/cli.py`
+- Create: `tests/test_agent_runtime.py`
+- Create: `tests/test_env.py`
+
+**Interfaces:**
+- Produces: `load_agent_specs(agents_dir: Path) -> dict[str, AgentSpec]`
+- Produces: `build_deepseek_runners(specs, sdk_factory=None, environ=None) -> dict[str, DeepSeekRunner]`
+- Produces: `run_real_workflow(project_root, runs_root, question_id, runners, approve_input) -> dict`
+- Produces CLI: `run-real-workflow`
+- Produces CLI: `release-run`
+
+- [x] **Step 1: 写四 Agent 配置装配失败测试**
+
+测试要求每个 Agent 使用自己的 prompt、`sdk` profile 和 `read-only`/`workspace-write` 权限。
+
+- [x] **Step 2: 实现 AgentSpec 与 runner factory**
+
+从 `agents/<name>/config.json` 和对应 `AGENT.md` 构造四个 `DeepSeekRunner`。
+
+- [x] **Step 3: 写 `.env` 加载失败测试**
+
+要求 `.env` 只补充缺失环境变量，进程环境优先。
+
+- [x] **Step 4: 实现本地环境加载**
+
+`run-real-workflow` 默认读取 `.env`，不覆盖已有变量。
+
+- [x] **Step 5: 写真实编排失败测试**
+
+验证 coordinator 只读预检、author 写主目录、两个 reviewer 使用各自只读 worktree。
+
+- [x] **Step 6: 实现真实编排与释放命令**
+
+`run-real-workflow` 停在 `HUMAN_REVIEW`；`release-run --approve` 才允许发布。
+
+- [x] **Step 7: 运行完整验证**
+
+Run: `uv sync --extra dev --extra deepseek && uv run pytest -q`
+
+Expected: 45 passed。
+
+- [x] **Step 8: 提交**
+
+```bash
+git add src tests docs
+git commit -m "feat: add real DeepSeek workflow entrypoint"
+```
+

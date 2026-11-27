@@ -24,6 +24,7 @@ class DeepSeekConfig:
     patches: tuple[str, ...] = ()
     timeout_seconds: int = 1800
     permission_mode: str = "workspace-write"
+    agents_home: str | None = "~/.codex"
 
     @classmethod
     def from_dict(cls, data: dict) -> "DeepSeekConfig":
@@ -35,6 +36,7 @@ class DeepSeekConfig:
             patches=tuple(data.get("patches", ())),
             timeout_seconds=data.get("timeout_seconds", cls.timeout_seconds),
             permission_mode=data.get("permission_mode", cls.permission_mode),
+            agents_home=data.get("agents_home", cls.agents_home),
         )
 
 
@@ -50,6 +52,7 @@ class DeepSeekRunner:
         config: DeepSeekConfig,
         sdk_factory: Callable[..., object] | None = None,
         environ: dict[str, str] | None = None,
+        agent_prompt: str = "",
     ):
         if config.profile == "sdk-minimal":
             raise HarnessConfigurationError(
@@ -64,6 +67,7 @@ class DeepSeekRunner:
         self.config = config
         self.sdk_factory = sdk_factory or _default_sdk_factory
         self.environ = environ if environ is not None else os.environ
+        self.agent_prompt = agent_prompt
 
     def run(
         self,
@@ -85,11 +89,24 @@ class DeepSeekRunner:
             env={
                 "DSH_PERMISSION_MODE": self.config.permission_mode,
                 "PYTHONDONTWRITEBYTECODE": "1",
+                **(
+                    {
+                        "DSH_AGENTS_HOME": str(
+                            Path(self.config.agents_home).expanduser().resolve()
+                        )
+                    }
+                    if self.config.agents_home
+                    else {}
+                ),
             },
         )
         with sdk as harness:
             result = harness.run(
-                json.dumps(task, ensure_ascii=False),
+                (
+                    f"{self.agent_prompt}\n\n"
+                    "任务包如下，只返回符合 result-v1 的 JSON：\n"
+                    f"{json.dumps(task, ensure_ascii=False)}"
+                ).strip(),
                 session_id=task["task_id"],
             )
         try:

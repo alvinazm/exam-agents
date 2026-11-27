@@ -15,6 +15,10 @@ class WorkflowError(RuntimeError):
     pass
 
 
+def _runner_for(runner, agent: str):
+    return runner[agent] if isinstance(runner, dict) else runner
+
+
 def _has_blocking_findings(result: dict) -> bool:
     return result["status"] != "passed" or any(
         finding["severity"] in {"high", "medium"}
@@ -41,7 +45,7 @@ def _execute_task(
     task = json.loads(task_path.read_text(encoding="utf-8"))
     home = run_dir / "homes" / agent
     home.mkdir(parents=True, exist_ok=True)
-    result = runner.run(task, workspace, home, 1800)
+    result = _runner_for(runner, agent).run(task, workspace, home, 1800)
     result = dict(result)
     result["task_id"] = task["task_id"]
     return submit_result(run_dir, task["task_id"], result)
@@ -167,12 +171,13 @@ def _commit_author_draft(
     return commit
 
 
-def run_mock_workflow(
+def _run_workflow(
     project_root: Path,
     runs_root: Path,
     question_id: str,
     runner,
     approve_input: bool,
+    coordinator_check: bool,
 ) -> dict:
     project_root = project_root.resolve()
     store = RunStore(runs_root)
@@ -187,6 +192,20 @@ def run_mock_workflow(
         run_dir,
         question_id,
     )
+    if coordinator_check:
+        coordinator = _execute_task(
+            run_dir,
+            runner,
+            "coordinator",
+            "coordinator_check",
+            "Check that the run manifest, worktrees, and stage sequence are ready.",
+            project_root,
+        )
+        if _has_blocking_findings(coordinator):
+            manifest["stage"] = Stage.BLOCKED.value
+            manifest["active"] = False
+            store.save(manifest)
+            return manifest
     _advance(store, manifest, "design_started")
     design = _execute_task(
         run_dir,
@@ -267,6 +286,47 @@ def run_mock_workflow(
         return changed
     _advance(store, manifest, "output_passed")
     return _advance(store, manifest, "human_review_started")
+
+
+def run_mock_workflow(
+    project_root: Path,
+    runs_root: Path,
+    question_id: str,
+    runner,
+    approve_input: bool,
+) -> dict:
+    return _run_workflow(
+        project_root,
+        runs_root,
+        question_id,
+        runner,
+        approve_input,
+        coordinator_check=False,
+    )
+
+
+def run_real_workflow(
+    project_root: Path,
+    runs_root: Path,
+    question_id: str,
+    runners: dict,
+    approve_input: bool,
+) -> dict:
+    if set(runners) != {
+        "coordinator",
+        "author",
+        "material-reviewer",
+        "quality-reviewer",
+    }:
+        raise WorkflowError("real workflow requires all four agent runners")
+    return _run_workflow(
+        project_root,
+        runs_root,
+        question_id,
+        runners,
+        approve_input,
+        coordinator_check=True,
+    )
 
 
 def release_run(
