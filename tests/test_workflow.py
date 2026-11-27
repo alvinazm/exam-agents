@@ -148,3 +148,28 @@ def test_release_detects_changed_frozen_input(tmp_path):
     )
     assert manifest["stage"] == "INPUT_INVALIDATED"
     assert manifest["active"] is False
+
+
+def test_reviewers_see_latest_author_draft(tmp_path):
+    class WritingRunner(MockHarnessRunner):
+        def run(self, task, workspace, home, timeout_seconds):
+            result = super().run(task, workspace, home, timeout_seconds)
+            if task["stage"] == "input" and workspace.name == "author":
+                (workspace / "input" / "new.txt").write_text(
+                    "new\n",
+                    encoding="utf-8",
+                )
+            return result
+
+    project = make_project(tmp_path / "project")
+    runs = tmp_path / "runs"
+    run_mock_workflow(
+        project,
+        runs,
+        "q1",
+        WritingRunner(responses()),
+        approve_input=True,
+    )
+
+    assert (runs / "q1" / "worktrees" / "material-review" / "input" / "new.txt").is_file()
+    assert (runs / "q1" / "worktrees" / "quality-review" / "input" / "new.txt").is_file()

@@ -1,6 +1,7 @@
 import json
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from uuid import uuid4
 
 from .dispatch import dispatch_stage
 from .freeze import freeze_inputs, verify_hashes
@@ -71,7 +72,7 @@ def _record_reviews(
 def _run_review_round(
     run_dir: Path,
     runner,
-    workspace: Path,
+    workspaces: dict[str, Path],
 ) -> tuple[dict, dict]:
     jobs = (
         ("material-reviewer", "Evaluate materials.", "material_review"),
@@ -86,7 +87,7 @@ def _run_review_round(
                 agent,
                 stage,
                 instructions,
-                workspace,
+                workspaces[agent],
             ): agent
             for agent, instructions, stage in jobs
         }
@@ -114,25 +115,56 @@ def _blocked_or_changed(
     return None
 
 
-def _create_worktrees(
+def _create_author_worktree(
     project: Path,
     run_dir: Path,
     question_id: str,
-) -> tuple[Path, Path, Path]:
+) -> Path:
     repo = GitRepo(project)
-    author = repo.create_worktree(
+    return repo.create_worktree(
         f"exam/{question_id}/author",
         run_dir / "worktrees" / "author",
     )
-    material = repo.create_worktree(
-        f"exam/{question_id}/material-review",
-        run_dir / "worktrees" / "material-review",
+
+
+def _refresh_review_worktrees(
+    project: Path,
+    run_dir: Path,
+    question_id: str,
+    commit: str,
+) -> dict[str, Path]:
+    repo = GitRepo(project)
+    paths = {
+        "material-reviewer": run_dir / "worktrees" / "material-review",
+        "quality-reviewer": run_dir / "worktrees" / "quality-review",
+    }
+    for path in paths.values():
+        if path.exists():
+            repo.remove_worktree(path)
+    suffix = f"{commit[:8]}-{uuid4().hex[:6]}"
+    repo.create_worktree(
+        f"exam/{question_id}/material-review-{suffix}",
+        paths["material-reviewer"],
+        commit,
     )
-    quality = repo.create_worktree(
-        f"exam/{question_id}/quality-review",
-        run_dir / "worktrees" / "quality-review",
+    repo.create_worktree(
+        f"exam/{question_id}/quality-review-{suffix}",
+        paths["quality-reviewer"],
+        commit,
     )
-    return author, material, quality
+    return paths
+
+
+def _commit_author_draft(
+    store: RunStore,
+    manifest: dict,
+    author: Path,
+    label: str,
+) -> str:
+    commit = GitRepo(author).commit_all(f"draft: {manifest['question_id']} {label}")
+    manifest["base_commit"] = commit
+    store.save(manifest)
+    return commit
 
 
 def run_mock_workflow(
@@ -150,7 +182,7 @@ def run_mock_workflow(
         GitRepo(project_root).head(),
     )
     run_dir = runs_root.resolve() / question_id
-    author, _material, _quality = _create_worktrees(
+    author = _create_author_worktree(
         project_root,
         run_dir,
         question_id,
@@ -169,6 +201,7 @@ def run_mock_workflow(
         manifest["stage"] = Stage.CHANGES_REQUIRED.value
         store.save(manifest)
         return manifest
+    design_commit = _commit_author_draft(store, manifest, author, "design")
     _advance(store, manifest, "design_passed")
     _advance(store, manifest, "input_started")
     input_result = _execute_task(
@@ -184,8 +217,15 @@ def run_mock_workflow(
         manifest["stage"] = Stage.CHANGES_REQUIRED.value
         store.save(manifest)
         return manifest
+    input_commit = _commit_author_draft(store, manifest, author, "input")
     _advance(store, manifest, "input_review_started")
-    reviews = _run_review_round(run_dir, runner, author)
+    review_workspaces = _refresh_review_worktrees(
+        project_root,
+        run_dir,
+        question_id,
+        input_commit,
+    )
+    reviews = _run_review_round(run_dir, runner, review_workspaces)
     _record_reviews(manifest, *reviews)
     changed = _blocked_or_changed(store, manifest, reviews)
     if changed:
@@ -196,7 +236,7 @@ def run_mock_workflow(
     manifest["approvals"]["input_frozen"] = True
     manifest = freeze_inputs(run_dir, author, manifest)
     repo = GitRepo(project_root)
-    repo.tag(f"exam/{question_id}/input-frozen", manifest["base_commit"])
+    repo.tag(f"exam/{question_id}/input-frozen", input_commit)
     _advance(store, manifest, "input_frozen")
     _advance(store, manifest, "output_started")
     output = _execute_task(
@@ -212,8 +252,15 @@ def run_mock_workflow(
         manifest["stage"] = Stage.CHANGES_REQUIRED.value
         store.save(manifest)
         return manifest
+    output_commit = _commit_author_draft(store, manifest, author, "output")
     _advance(store, manifest, "output_review_started")
-    reviews = _run_review_round(run_dir, runner, author)
+    review_workspaces = _refresh_review_worktrees(
+        project_root,
+        run_dir,
+        question_id,
+        output_commit,
+    )
+    reviews = _run_review_round(run_dir, runner, review_workspaces)
     _record_reviews(manifest, *reviews)
     changed = _blocked_or_changed(store, manifest, reviews)
     if changed:
