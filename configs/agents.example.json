@@ -1,0 +1,6 @@
+{
+  "coordinator": "agents/coordinator/config.json",
+  "author": "agents/author/config.json",
+  "material-reviewer": "agents/material-reviewer/config.json",
+  "quality-reviewer": "agents/quality-reviewer/config.json"
+}

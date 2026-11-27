@@ -4,5 +4,6 @@
   "max_tokens": 49152,
   "profile": "sdk",
   "patches": [],
-  "timeout_seconds": 1800
+  "timeout_seconds": 1800,
+  "permission_mode": "workspace-write"
 }

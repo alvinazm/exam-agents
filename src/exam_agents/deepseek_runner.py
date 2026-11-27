@@ -23,6 +23,7 @@ class DeepSeekConfig:
     profile: str = "sdk"
     patches: tuple[str, ...] = ()
     timeout_seconds: int = 1800
+    permission_mode: str = "workspace-write"
 
     @classmethod
     def from_dict(cls, data: dict) -> "DeepSeekConfig":
@@ -33,6 +34,7 @@ class DeepSeekConfig:
             profile=data.get("profile", cls.profile),
             patches=tuple(data.get("patches", ())),
             timeout_seconds=data.get("timeout_seconds", cls.timeout_seconds),
+            permission_mode=data.get("permission_mode", cls.permission_mode),
         )
 
 
@@ -53,6 +55,12 @@ class DeepSeekRunner:
             raise HarnessConfigurationError(
                 "sdk-minimal has no subagents and uses danger-full-access"
             )
+        if config.permission_mode not in {
+            "read-only",
+            "workspace-write",
+            "danger-full-access",
+        }:
+            raise HarnessConfigurationError("invalid permission mode")
         self.config = config
         self.sdk_factory = sdk_factory or _default_sdk_factory
         self.environ = environ if environ is not None else os.environ
@@ -74,6 +82,10 @@ class DeepSeekRunner:
             dsh_home=str(home.resolve()),
             profile=self.config.profile,
             patches=self.config.patches,
+            env={
+                "DSH_PERMISSION_MODE": self.config.permission_mode,
+                "PYTHONDONTWRITEBYTECODE": "1",
+            },
         )
         with sdk as harness:
             result = harness.run(
